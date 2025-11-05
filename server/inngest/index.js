@@ -60,7 +60,7 @@ const syncUserUpdation = inngest.createFunction(
 //Inngest Function to save workspace data to a database
 const syncWorkspaceCreation = inngest.createFunction(
   { id: "sync-workspace-from-clerk" },
-  { event: "clerk/organisation.created" },
+  { event: "clerk/organization.created" },
   async ({ event }) => {
     const { data } = event;
     await prisma.workspace.create({
@@ -87,7 +87,7 @@ const syncWorkspaceCreation = inngest.createFunction(
 // Inngest function to update workspace data in database
 const syncWorkspaceUpdation = inngest.createFunction(
   { id: "update-workspace-from-clerk" },
-  { event: "clerk/organisation.updated" },
+  { event: "clerk/organization.updated" },
   async ({ event }) => {
     const { data } = event;
     await prisma.workspace.update({
@@ -105,7 +105,7 @@ const syncWorkspaceUpdation = inngest.createFunction(
 // Inngest function to DELETE workspace data in database
 const syncWorkspaceDeletion = inngest.createFunction(
     { id: "delete-workspace-with-clerk" },
-  { event: "clerk/organisation.deleted" },
+  { event: "clerk/organization.deleted" },
   async({event}) =>{
     const {data} = event
     await prisma.workspace.delete({
@@ -119,7 +119,7 @@ const syncWorkspaceDeletion = inngest.createFunction(
 //Inngest function to save workspace member data to a database
 const syncWorkspaceMemberCreation = inngest.createFunction(
     {id: 'sync-workspace-member-from-clerk'},
-    {event: 'clerk/organisationInvitation.accepted'},
+    {event: 'clerk/organizationInvitation.accepted'},
     async ({event}) =>{
         const {data} = event
         await prisma.workspaceMember.create({

@@ -1,9 +1,9 @@
 
+import prisma from "../configs/prisma.js"
+import { inngest } from "../inngest/index.js"
+
 
 // Create Task
-
-import prisma from "../configs/prisma.js"
-
 export const createTask = async (req , res) =>{
     try {
         const {userId} = await req.auth()
@@ -44,6 +44,13 @@ export const createTask = async (req , res) =>{
                 id: task.id
             },
             include: {assignee: true}
+        })
+
+        await inngest.send({
+            name: "app/task.assigned",
+            data:{
+                taskId: task.id , origin
+            }
         })
 
         res.json({task: taskWithAssignee , message: "Task created Successfully"})

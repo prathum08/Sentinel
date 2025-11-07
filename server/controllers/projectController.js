@@ -1,4 +1,4 @@
-import prisma from "../configs/prisma";
+import prisma from "../configs/prisma.js";
 
 
 // Create Project
@@ -185,7 +185,7 @@ export const addMember = async(req , res) =>{
         })
 
         res.json({member, message: "Member added successfully"})
-        
+
 
 
 

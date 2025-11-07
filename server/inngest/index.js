@@ -1,5 +1,6 @@
 import { Inngest } from "inngest";
 import prisma from "../configs/prisma.js";
+import sendEmail from "../configs/nodemailer.js";
 
 // Create a client to send and receive events
 export const inngest = new Inngest({ id: "sentinel2" });
@@ -104,42 +105,198 @@ const syncWorkspaceUpdation = inngest.createFunction(
 );
 // Inngest function to DELETE workspace data in database
 const syncWorkspaceDeletion = inngest.createFunction(
-    { id: "delete-workspace-with-clerk" },
+  { id: "delete-workspace-with-clerk" },
   { event: "clerk/organization.deleted" },
-  async({event}) =>{
-    const {data} = event
+  async ({ event }) => {
+    const { data } = event;
     await prisma.workspace.delete({
-        where:{
-            id: data.id
-        }
-    })
+      where: {
+        id: data.id,
+      },
+    });
   }
-)
+);
 
 //Inngest function to save workspace member data to a database
 const syncWorkspaceMemberCreation = inngest.createFunction(
-    {id: 'sync-workspace-member-from-clerk'},
-    {event: 'clerk/organizationInvitation.accepted'},
-    async ({event}) =>{
-        const {data} = event
-        await prisma.workspaceMember.create({
-            data:{
-                userId: data.user_id,
-                workspaceId: data.organization_id,
-                role: String(data.role_name).toUpperCase(),
-            }
-        })
+  { id: "sync-workspace-member-from-clerk" },
+  { event: "clerk/organizationInvitation.accepted" },
+  async ({ event }) => {
+    const { data } = event;
+    await prisma.workspaceMember.create({
+      data: {
+        userId: data.user_id,
+        workspaceId: data.organization_id,
+        role: String(data.role_name).toUpperCase(),
+      },
+    });
+  }
+);
+
+//Inngest function to send email on Task creation
+const sendTaskAssignmentEmail = inngest.createFunction(
+  { id: "send-task-assignment-mail" },
+  { event: "app/task.assigned" },
+  async ({ event, step }) => {
+    const { taskId, origin } = event.data;
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      include: { assignee: true, project: true },
+    });
+
+    await sendEmail({
+      to: task.assignee.email,
+      subject: `New Task Assignment in ${task.project.name}`,
+      body: `
+  <div style="max-width: 600px; padding: 20px; font-family: Arial, sans-serif; color: #333;">
+
+    <h2 style="margin-bottom: 10px;">
+      Hi ${task.assignee.name},
+    </h2>
+
+    <p style="font-size: 16px; margin: 0 0 12px;">
+      You have been assigned a new task.
+    </p>
+
+    <p style="font-size: 20px; font-weight: bold; color: #0078ff; margin: 8px 0;">
+      ${task.title}
+    </p>
+
+    <div style="
+      border: 1px solid #ddd; 
+      padding: 12px 16px; 
+      border-radius: 6px; 
+      margin: 20px 0; 
+      background: #fafafa;
+    ">
+      <p style="margin: 6px 0;">
+        <strong>Description:</strong><br/>
+        ${task.description}
+      </p>
+
+      <p style="margin: 6px 0;">
+        <strong>Due Date:</strong> ${new Date(
+          task.due_date
+        ).toLocaleDateString()}
+      </p>
+    </div>
+
+    <a href="${origin}" 
+      style="
+        display: inline-block; 
+        padding: 12px 20px; 
+        background-color: #0078ff; 
+        color: #fff; 
+        text-decoration: none; 
+        border-radius: 6px; 
+        font-weight: bold;
+      ">
+      View Task
+    </a>
+
+    <p style="margin-top: 30px; font-size: 12px; color: #777;">
+      This is an automated message. Please do not reply.
+    </p>
+
+  </div>
+`,
+    });
+    if (
+      new Date(task.due_date).toLocaleDateString() !== new Date().toDateString()
+    ) {
+      await step.sleepUntil("wait-for-the-due-date", new Date(task.due_date));
+
+      await step.run("chech-if-task-is-completed", async () => {
+        const task = await prisma.task.findUnique({
+          where: {
+            id: taskId,
+          },
+          include: { assignee: true, project: true },
+        });
+
+        if (!task) {
+          return;
+        }
+
+        if (task.status !== "DONE") {
+          await step.run("send-task-reminder-mail", async () => {
+            await sendEmail({
+              to: task.assignee.email,
+              subject: `Reminder for ${task.project.name}`,
+              body: ` <div style="max-width: 600px; padding: 20px; font-family: Arial, sans-serif; color: #333;">
+    
+    <h2 style="margin-bottom: 10px;">
+      Hi ${task.assignee.name}, ⏰
+    </h2>
+
+    <p style="font-size: 16px; margin: 0 0 12px;">
+      This is a reminder for a pending task in <strong>${
+        task.project.name
+      }</strong>.
+    </p>
+
+    <p style="font-size: 20px; font-weight: bold; color: #007bff; margin: 8px 0;">
+      ${task.title}
+    </p>
+
+    <div style="
+      border: 1px solid #ddd; 
+      padding: 12px 16px; 
+      border-radius: 6px; 
+      margin: 20px 0; 
+      background: #fafafa;
+    ">
+      <p style="margin: 6px 0;">
+        <strong>Description:</strong><br/>
+        ${task.description}
+      </p>
+
+      <p style="margin: 6px 0;">
+        <strong>Due Date:</strong> ${new Date(
+          task.due_date
+        ).toLocaleDateString()}
+      </p>
+
+      <p style="margin: 6px 0; color: #cc0000; font-weight: bold;">
+        ⚠️ Please take action as the deadline is approaching.
+      </p>
+    </div>
+
+    <a href="${origin}" 
+      style="
+        display: inline-block; 
+        padding: 12px 20px; 
+        background-color: #007bff;
+        color: #fff !important; 
+        text-decoration: none; 
+        border-radius: 6px; 
+        font-weight: bold;
+      ">
+      View Task
+    </a>
+
+    <p style="margin-top: 30px; font-size: 12px; color: #777;">
+      This is an automated reminder. Please do not reply to this email.
+    </p>
+
+  </div>
+`,
+            });
+          });
+        }
+      });
     }
-)
+  }
+);
 
 // Create an empty array where we'll export future Inngest functions
 export const functions = [
-    syncUserCreation, 
-    syncUserDeletion, 
-    syncUserUpdation,
-    syncWorkspaceCreation,
-    syncWorkspaceDeletion,
-    syncWorkspaceUpdation,
-    syncWorkspaceMemberCreation
-
+  syncUserCreation,
+  syncUserDeletion,
+  syncUserUpdation,
+  syncWorkspaceCreation,
+  syncWorkspaceDeletion,
+  syncWorkspaceUpdation,
+  syncWorkspaceMemberCreation,
+  sendTaskAssignmentEmail,
 ];

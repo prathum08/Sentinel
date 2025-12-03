@@ -33,7 +33,7 @@ export const createTask = async (req , res) =>{
                 title,
                 description,
                 priority,
-                assigneeId: assigneeId || null,
+                assigneeId,
                 status,
                 type,
                 due_date: new Date(due_date)
@@ -93,7 +93,7 @@ export const updateTask = async (req , res) =>{
             return res.status(403).json({message: "You don't have admin privileges for this project"})
         }
 
-        const updatedTask = await prisma.task.create.findUnique({
+        const updatedTask = await prisma.task.update({
             where:{id: req.params.id},
             data: req.body
         })
